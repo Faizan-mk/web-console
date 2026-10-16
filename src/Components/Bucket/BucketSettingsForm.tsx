@@ -37,12 +37,17 @@ interface State {
 }
 
 const DEFAULT_FACTOR = "MB";
+const DEFAULT_QUOTA_FACTOR = "TB";
 const FACTOR_MAP: Record<string, bigint> = {
   B: 1n,
   KB: 1000n,
   MB: 1000_000n,
   GB: 1000_000_000n,
+  TB: 1000_000_000_000n,
 };
+// TB is offered for the quota only, max block size keeps the units up to GB
+const BLOCK_SIZE_FACTORS = ["B", "KB", "MB", "GB"];
+const QUOTA_SIZE_FACTORS = [...BLOCK_SIZE_FACTORS, "TB"];
 
 /**
  * A form to create or update a bucket
@@ -55,7 +60,7 @@ class BucketSettingsForm extends React.Component<
     super(props);
     this.state = {
       maxBlockSizeFactor: DEFAULT_FACTOR,
-      quotaSizeFactor: DEFAULT_FACTOR,
+      quotaSizeFactor: DEFAULT_QUOTA_FACTOR,
     };
     this.onFinish = this.onFinish.bind(this);
   }
@@ -134,8 +139,16 @@ class BucketSettingsForm extends React.Component<
       }
       this.setState({
         settings,
-        maxBlockSizeFactor: this.calcBestFactor(settings.maxBlockSize),
-        quotaSizeFactor: this.calcBestFactor(settings.quotaSize),
+        maxBlockSizeFactor: this.calcBestFactor(
+          settings.maxBlockSize,
+          BLOCK_SIZE_FACTORS,
+          DEFAULT_FACTOR,
+        ),
+        quotaSizeFactor: this.calcBestFactor(
+          settings.quotaSize,
+          QUOTA_SIZE_FACTORS,
+          DEFAULT_QUOTA_FACTOR,
+        ),
       });
     } catch (err) {
       if (err instanceof APIError) {
@@ -146,13 +159,17 @@ class BucketSettingsForm extends React.Component<
     }
   }
 
-  calcBestFactor(value?: bigint): string {
-    let result = DEFAULT_FACTOR;
+  calcBestFactor(
+    value: bigint | undefined,
+    factors: string[],
+    defaultFactor: string,
+  ): string {
+    let result = defaultFactor;
     if (!value) {
       return result;
     }
 
-    for (const factor in FACTOR_MAP) {
+    for (const factor of factors) {
       const divisor = FACTOR_MAP[factor];
       if ((value / divisor) * divisor == value) {
         result = factor;
@@ -185,18 +202,14 @@ class BucketSettingsForm extends React.Component<
 
     const sizeSelector = (
       initValue: string,
+      factors: string[],
       onChange?: (value: string) => void,
     ) => (
       <Select
         defaultValue={initValue}
         style={{ width: 70 }}
         onChange={onChange}
-        options={[
-          { value: "B", label: "B" },
-          { value: "KB", label: "KB" },
-          { value: "MB", label: "MB" },
-          { value: "GB", label: "GB" },
-        ]}
+        options={factors.map((factor) => ({ value: factor, label: factor }))}
       />
     );
 
@@ -272,7 +285,7 @@ class BucketSettingsForm extends React.Component<
               >
                 <InputNumber controls={false} stringMode />
               </Form.Item>
-              {sizeSelector(quotaSizeFactor, (value) =>
+              {sizeSelector(quotaSizeFactor, QUOTA_SIZE_FACTORS, (value) =>
                 this.setState({ quotaSizeFactor: value }),
               )}
             </Space.Compact>
@@ -313,8 +326,10 @@ class BucketSettingsForm extends React.Component<
                           stringMode
                         />
                       </Form.Item>
-                      {sizeSelector(maxBlockSizeFactor, (value) =>
-                        this.setState({ maxBlockSizeFactor: value }),
+                      {sizeSelector(
+                        maxBlockSizeFactor,
+                        BLOCK_SIZE_FACTORS,
+                        (value) => this.setState({ maxBlockSizeFactor: value }),
                       )}
                     </Space.Compact>
                   </Form.Item>

@@ -318,4 +318,68 @@ describe("Bucket::BucketSettingsForm", () => {
       expect(screen.getByTitle(quotaType)).toBeTruthy();
     },
   );
+
+  it("should default the quota size unit to TB for a new bucket", async () => {
+    const { container } = renderForm({ showAll: true });
+    await waitForForm(container);
+
+    expect(screen.getByTitle("TB")).toBeTruthy();
+    // max block size keeps its MB default
+    expect(screen.getByTitle("MB")).toBeTruthy();
+  });
+
+  it("should convert the quota size from TB to bytes", async () => {
+    const { container } = renderForm({ showAll: true });
+    await waitForForm(container);
+
+    const quotaSizeInput = container.querySelector(
+      'input[id="bucketForm_quotaSize"]',
+    ) as HTMLInputElement;
+    fireEvent.change(quotaSizeInput, { target: { value: "2" } });
+
+    const submitButton = screen.getByRole("button", { name: /create/i });
+    await act(async () => {
+      fireEvent.click(submitButton);
+    });
+
+    await waitFor(() => expect(client.createBucket).toBeCalled());
+    expect(client.createBucket).toBeCalledWith(
+      "new_bucket",
+      expect.objectContaining({ quotaSize: 2_000_000_000_000n }),
+    );
+  });
+
+  it("should keep the unit of an existing quota", async () => {
+    bucket.getSettings = vi.fn().mockResolvedValue({
+      maxBlockSize: 64_000_000n,
+      maxBlockRecords: 1024,
+      quotaSize: 5_000_000_000n,
+      quotaType: QuotaType.FIFO,
+    });
+    const { container } = renderForm({ showAll: true, bucketName: "bucket" });
+    await waitForForm(container);
+
+    const quotaSizeInput = container.querySelector(
+      'input[id="bucketForm_quotaSize"]',
+    ) as HTMLInputElement;
+    expect(quotaSizeInput?.value).toBe("5");
+    expect(screen.getByTitle("GB")).toBeTruthy();
+  });
+
+  it("should show an existing quota in TB", async () => {
+    bucket.getSettings = vi.fn().mockResolvedValue({
+      maxBlockSize: 64_000_000n,
+      maxBlockRecords: 1024,
+      quotaSize: 3_000_000_000_000n,
+      quotaType: QuotaType.FIFO,
+    });
+    const { container } = renderForm({ showAll: true, bucketName: "bucket" });
+    await waitForForm(container);
+
+    const quotaSizeInput = container.querySelector(
+      'input[id="bucketForm_quotaSize"]',
+    ) as HTMLInputElement;
+    expect(quotaSizeInput?.value).toBe("3");
+    expect(screen.getByTitle("TB")).toBeTruthy();
+  });
 });
